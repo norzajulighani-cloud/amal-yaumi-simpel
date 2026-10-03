@@ -28,30 +28,78 @@ const CONFIG = {
 };
 
 // ──────────────────────────────────────────────────────────────
-// 👥  DAFTAR GURU — Diambil otomatis dari spreadsheet via GAS
-//     Tidak perlu diisi manual. GAS membaca langsung dari sheet.
+// 👥  DAFTAR GURU — 27 nama (hardcode sebagai sumber utama)
+//     GAS tetap dicoba untuk ambil nama terbaru dari spreadsheet.
 // ──────────────────────────────────────────────────────────────
 
-// Akan diisi setelah fetch dari GAS
-let DAFTAR_GURU = [];
+const NAMA_FALLBACK = [
+  'Abdul Halim, S.Pd.I., Gr',
+  'Abdurrahman',
+  'Ahmad Fauzi, S.Pd',
+  'Ahmad Hasbiyanor, S.Pd',
+  'Ahmad Khuwailid, S.E',
+  'Ahmad Rabiannor, S.Pd.I., Gr',
+  'Ahmad Ridhani, S.Pd',
+  'Ahdy Anugerah Putera, S.Kom',
+  'Aulia Rahman',
+  'Fahrianor, S.Pd',
+  'Ilhamnor, S.Pd',
+  'Johan Amrullah, AR',
+  'M. Hidayatullah, S.Pd',
+  'M.Yasir',
+  'Muhammad Azma Musyayid, S.Pd',
+  'Muhammad Hamidi, S.Pd',
+  'Muhammad Kifli, S.H',
+  'Muhammad Noor',
+  'Muhammad Raihan Islami, S.Pd',
+  'Muhammad Syahid, S.Pd., Gr',
+  'Nasrullah, S,Pd',
+  'Nor Zajuli Ghani',
+  'Ramadhan, S.Pd.I., Gr',
+  'Riadi, S.H., Gr',
+  'Riduansyah, S.Sos., Gr',
+  'Rudi, S.Pd',
+  'Subhannor, S. Pd',
+];
+
+let DAFTAR_GURU = [...NAMA_FALLBACK];
 
 /**
- * Ambil daftar nama guru dari GAS (GET request).
- * GAS membaca kolom nama dari salah satu spreadsheet.
+ * Coba ambil nama guru dari GAS (untuk sinkronisasi dengan spreadsheet).
+ * Jika gagal (misal dibuka dari file://), gunakan NAMA_FALLBACK.
  */
 async function fetchDaftarGuru() {
+  // Jangan coba fetch jika dibuka dari file:// — pasti gagal karena CORS
+  if (location.protocol === 'file:') {
+    console.info('Mode file://: pakai daftar nama lokal.');
+    DAFTAR_GURU = [...NAMA_FALLBACK];
+    return false;
+  }
+
   try {
-    const url  = CONFIG.GAS_URL + '?action=getNama';
-    const resp = await fetch(url);
+    const resp = await fetch(CONFIG.GAS_URL + '?action=getNama');
     const json = await resp.json();
-    if (json.status === 'ok' && Array.isArray(json.data) && json.data.length > 0) {
-      DAFTAR_GURU = json.data;
-      return true;
+    if (json.status === 'ok' && Array.isArray(json.data) && json.data.length >= 5) {
+      // Filter ketat: hanya baris yang tampak seperti nama manusia
+      const namaSaja = json.data.filter(n =>
+        n.length >= 3 &&         // minimal 3 karakter
+        n.length <= 60 &&        // tidak terlalu panjang
+        !n.includes('=') &&      // bukan formula
+        !n.includes(':') &&      // bukan rumus/keterangan
+        !/^\d/.test(n)           // tidak diawali angka
+      );
+      if (namaSaja.length >= 5) {
+        DAFTAR_GURU = namaSaja;
+        console.info(`Nama berhasil dimuat dari GAS: ${namaSaja.length} orang.`);
+        return true;
+      }
     }
-    console.warn('Fetch nama gagal, pakai fallback:', json);
+    console.warn('Fetch nama tidak valid, pakai fallback.');
+    DAFTAR_GURU = [...NAMA_FALLBACK];
     return false;
   } catch (err) {
-    console.warn('Fetch nama error:', err);
+    console.warn('Fetch nama error (pakai fallback):', err.message);
+    DAFTAR_GURU = [...NAMA_FALLBACK];
     return false;
   }
 }
@@ -354,18 +402,27 @@ async function submitData() {
     return;
   }
 
+  // Blokir jika dibuka dari file:// — browser tidak izinkan request ke server eksternal
+  if (location.protocol === 'file:') {
+    toast(
+      '⚠️ Buka via HTTPS agar bisa kirim data. Gunakan versi GitHub Pages.',
+      'warn', 6000
+    );
+    hideLoading();
+    return;
+  }
+
   const tgl = formatTanggal(STATE.tanggal);
 
-  // Build payload
   const payload = {
-    guru:    STATE.guru,
-    tanggal: tgl.iso,          // YYYY-MM-DD
-    hari:    tgl.hari,
-    bulan:   tgl.bulan,
-    tahun:   tgl.tahun,
-    day:     tgl.day,          // nomor hari (1–31) — untuk cari kolom
+    guru:           STATE.guru,
+    tanggal:        tgl.iso,
+    hari:           tgl.hari,
+    bulan:          tgl.bulan,
+    tahun:          tgl.tahun,
+    day:            tgl.day,
     spreadsheetIds: CONFIG.SPREADSHEET_IDS,
-    answers: STATE.answers,    // { qiyamul_lail: 'Y', isya_subuh: 'T', ... }
+    answers:        STATE.answers,
   };
 
   showLoading(
@@ -374,25 +431,43 @@ async function submitData() {
   );
 
   try {
+    /**
+     * GAS menerima POST lalu redirect 302 ke URL final.
+     * - Jangan set Content-Type header kustom (biarkan browser handle)
+     * - redirect: 'follow' memastikan browser ikut redirect GAS
+     * - Harus dibuka dari HTTPS agar CORS diizinkan
+     */
     const res = await fetch(CONFIG.GAS_URL, {
-      method:  'POST',
-      body:    JSON.stringify(payload),
-      headers: { 'Content-Type': 'text/plain' }, // avoid CORS preflight
+      method:   'POST',
+      body:     JSON.stringify(payload),
+      redirect: 'follow',
     });
 
-    const json = await res.json();
+    const text = await res.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      throw new Error('Respons GAS bukan JSON: ' + text.substring(0, 100));
+    }
+
     hideLoading();
 
     if (json.status === 'ok') {
       showPageSukses(json, tgl);
     } else {
-      toast(`❌ ${json.message || 'Terjadi kesalahan pada server.'}`, 'err', 6000);
+      toast(`❌ GAS error: ${json.message || 'Tidak diketahui.'}`, 'err', 6000);
     }
 
   } catch (err) {
     hideLoading();
-    console.error(err);
-    toast('❌ Koneksi gagal. Periksa GAS URL dan koneksi internet.', 'err', 6000);
+    console.error('[Submit error]', err);
+
+    const isNetErr = err instanceof TypeError;
+    const msg = isNetErr
+      ? '❌ Koneksi gagal. Pastikan internet aktif dan GAS URL benar.'
+      : `❌ Error: ${err.message}`;
+    toast(msg, 'err', 7000);
   }
 }
 
