@@ -69,7 +69,6 @@ let DAFTAR_GURU = [...NAMA_FALLBACK];
  * Jika gagal (misal dibuka dari file://), gunakan NAMA_FALLBACK.
  */
 async function fetchDaftarGuru() {
-  // Jangan coba fetch jika dibuka dari file:// — pasti gagal karena CORS
   if (location.protocol === 'file:') {
     console.info('Mode file://: pakai daftar nama lokal.');
     DAFTAR_GURU = [...NAMA_FALLBACK];
@@ -77,28 +76,25 @@ async function fetchDaftarGuru() {
   }
 
   try {
-    const resp = await fetch(CONFIG.GAS_URL + '?action=getNama');
-    const json = await resp.json();
+    const json = await callGasJsonp(
+      CONFIG.GAS_URL + '?action=getNama'
+    );
     if (json.status === 'ok' && Array.isArray(json.data) && json.data.length >= 5) {
-      // Filter ketat: hanya baris yang tampak seperti nama manusia
       const namaSaja = json.data.filter(n =>
-        n.length >= 3 &&         // minimal 3 karakter
-        n.length <= 60 &&        // tidak terlalu panjang
-        !n.includes('=') &&      // bukan formula
-        !n.includes(':') &&      // bukan rumus/keterangan
-        !/^\d/.test(n)           // tidak diawali angka
+        n.length >= 3 && n.length <= 60 &&
+        !n.includes('=') && !n.includes(':') &&
+        !/^\d/.test(n)
       );
       if (namaSaja.length >= 5) {
         DAFTAR_GURU = namaSaja;
-        console.info(`Nama berhasil dimuat dari GAS: ${namaSaja.length} orang.`);
+        console.info(`Nama dari GAS: ${namaSaja.length} orang.`);
         return true;
       }
     }
-    console.warn('Fetch nama tidak valid, pakai fallback.');
     DAFTAR_GURU = [...NAMA_FALLBACK];
     return false;
   } catch (err) {
-    console.warn('Fetch nama error (pakai fallback):', err.message);
+    console.warn('fetchDaftarGuru error (pakai fallback):', err.message);
     DAFTAR_GURU = [...NAMA_FALLBACK];
     return false;
   }
@@ -441,6 +437,54 @@ function setMode(mode) {
 }
 
 // ──────────────────────────────────────────────────────────────
+// 🔑  JSONP HELPER — Bypass CORS sepenuhnya
+// ──────────────────────────────────────────────────────────────
+
+/**
+ * Panggil GAS endpoint menggunakan JSONP (inject <script> tag).
+ * Tidak ada CORS karena tidak menggunakan fetch/XHR.
+ * GAS harus mengembalikan: callbackName(jsonData);
+ *
+ * @param {string} url - URL GAS tanpa parameter callback
+ * @param {number} [timeoutMs=20000] - Timeout dalam milidetik
+ * @returns {Promise<object>} Data JSON yang dikembalikan GAS
+ */
+function callGasJsonp(url, timeoutMs = 20000) {
+  return new Promise((resolve, reject) => {
+    // Nama unik agar beberapa call tidak bertabrakan
+    const cbName = '_gas_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+
+    let timer;
+    function cleanup() {
+      clearTimeout(timer);
+      delete window[cbName];
+      if (script && script.parentNode) script.parentNode.removeChild(script);
+    }
+
+    // Timeout guard
+    timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('Timeout: GAS tidak merespons dalam ' + (timeoutMs/1000) + ' detik.'));
+    }, timeoutMs);
+
+    // Callback yang akan dipanggil oleh script GAS
+    window[cbName] = function(data) {
+      cleanup();
+      resolve(data);
+    };
+
+    // Inject script tag
+    const script = document.createElement('script');
+    script.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cbName;
+    script.onerror = function() {
+      cleanup();
+      reject(new Error('Script GAS gagal dimuat. Periksa GAS URL.'));
+    };
+    document.head.appendChild(script);
+  });
+}
+
+// ──────────────────────────────────────────────────────────────
 // 🚀  SUBMIT
 // ──────────────────────────────────────────────────────────────
 
@@ -487,21 +531,15 @@ async function submitData() {
 
   try {
     /**
-     * 🔑 FIX CORS: Gunakan GET request dengan payload di URL.
-     * POST ke GAS menyebabkan redirect 302 yang mengosongkan body.
-     * GET tidak mengalami masalah ini dan tetap CORS-safe.
+     * 🔑 JSONP: Inject <script> tag ke GAS URL.
+     * Tidak ada CORS karena browser tidak membatasi load script dari mana saja.
+     * GAS mengembalikan: callbackName({ status, message, ... });
      */
     const url = CONFIG.GAS_URL
       + '?action=submit'
       + '&payload=' + encodeURIComponent(JSON.stringify(payload));
 
-    const res  = await fetch(url, { redirect: 'follow' });
-    const text = await res.text();
-
-    let json;
-    try { json = JSON.parse(text); }
-    catch { throw new Error('Respons GAS tidak valid: ' + text.substring(0, 120)); }
-
+    const json = await callGasJsonp(url);
     hideLoading();
 
     if (json.status === 'ok') {
@@ -513,14 +551,10 @@ async function submitData() {
   } catch (err) {
     hideLoading();
     console.error('[Submit error]', err);
-    toast(
-      err instanceof TypeError
-        ? '❌ Koneksi gagal. Periksa internet dan GAS URL.'
-        : `❌ ${err.message}`,
-      'err', 7000
-    );
+    toast(`❌ ${err.message}`, 'err', 7000);
   }
 }
+
 
 // ──────────────────────────────────────────────────────────────
 // ✅  PAGE 3 — SUKSES
