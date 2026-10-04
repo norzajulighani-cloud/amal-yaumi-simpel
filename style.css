@@ -348,6 +348,40 @@ select option { background: #0c1a10; }
   position: absolute; opacity: 0; pointer-events: none; width: 0; height: 0;
 }
 
+/* ── MODE TOGGLE ── */
+.mode-toggle {
+  display: flex; gap: 6px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 4px;
+}
+.mode-btn {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px;
+  padding: 8px 10px;
+  background: transparent;
+  border: none; border-radius: calc(var(--r-sm) - 3px);
+  color: var(--txt-2);
+  font-family: 'Inter', sans-serif; font-size: .75rem; font-weight: 600;
+  cursor: pointer; transition: all var(--t);
+  white-space: nowrap;
+}
+.mode-btn:hover { color: var(--txt); background: rgba(255,255,255,.05); }
+.mode-btn.active {
+  background: linear-gradient(135deg, rgba(200,150,12,.3), rgba(200,150,12,.12));
+  color: var(--gold-1);
+  border: 1px solid var(--border-h);
+  box-shadow: 0 0 10px var(--gold-glow);
+}
+.mode-btn svg { flex-shrink: 0; }
+
+.mode-desc {
+  font-size: .74rem; color: var(--txt-3);
+  line-height: 1.5; margin-top: -4px;
+  padding: 0 2px;
+  transition: color var(--t);
+}
+
 /* ── AMAL CARDS ── */
 .amal-cards {
   display: flex; flex-direction: column; gap: 10px;

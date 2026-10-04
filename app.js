@@ -141,8 +141,13 @@ const AMAL_LIST = [
 
 const STATE = {
   guru:    '',
-  tanggal: new Date(), // Date object
-  answers: {},         // { qiyamul_lail: 'Y'|'T', isya_subuh: 'Y'|'T', ... }
+  tanggal: new Date(),
+  answers: {},
+  /**
+   * 'lengkap'  — semua 4 amal wajib diisi sebelum bisa submit
+   * 'pilihan'  — bisa submit kapan saja, minimal 1 amal diisi
+   */
+  mode:    'lengkap',
 };
 
 // ──────────────────────────────────────────────────────────────
@@ -372,24 +377,67 @@ function handleAns(amalId, val) {
   }
 }
 
-/* ─── Progress ─── */
 function updateProgress() {
   const filled = Object.keys(STATE.answers).length;
   const total  = AMAL_LIST.length;
   const pct    = total > 0 ? (filled / total * 100) : 0;
 
   document.getElementById('prog-fill').style.width = pct + '%';
-  document.getElementById('label-amal-count').textContent = `${filled} / ${total} diisi`;
-  document.getElementById('submit-badge').textContent = `${filled}/${total}`;
+  document.getElementById('label-amal-count').textContent =
+    STATE.mode === 'pilihan'
+      ? `${filled} dipilih (mode pilihan)`
+      : `${filled} / ${total} diisi`;
+  document.getElementById('submit-badge').textContent =
+    STATE.mode === 'pilihan' ? filled : `${filled}/${total}`;
 }
 
 function updateSubmitBtn() {
   const filled  = Object.keys(STATE.answers).length;
-  const allDone = filled === AMAL_LIST.length;
   const btn     = document.getElementById('btn-submit');
   const note    = document.getElementById('submit-note');
-  btn.disabled      = !allDone;
-  note.style.opacity = allDone ? '0' : '1';
+
+  if (STATE.mode === 'pilihan') {
+    // Mode Pilihan: bisa submit kapan saja asal minimal 1 diisi
+    btn.disabled = filled < 1;
+    note.style.opacity = filled >= 1 ? '0' : '1';
+    note.textContent = 'Pilih minimal 1 amal untuk dikirim.';
+  } else {
+    // Mode Lengkap: wajib isi semua
+    btn.disabled = filled < AMAL_LIST.length;
+    note.style.opacity = filled >= AMAL_LIST.length ? '0' : '1';
+    note.textContent = `Isi semua ${AMAL_LIST.length} amal terlebih dahulu.`;
+  }
+}
+
+/* ─── Mode Toggle ─── */
+function setMode(mode) {
+  STATE.mode    = mode;
+  STATE.answers = {};
+
+  // Update tombol mode
+  document.getElementById('mode-btn-lengkap').classList.toggle('active', mode === 'lengkap');
+  document.getElementById('mode-btn-pilihan').classList.toggle('active', mode === 'pilihan');
+
+  // Update deskripsi mode
+  const descEl = document.getElementById('mode-desc');
+  if (descEl) {
+    descEl.textContent = mode === 'pilihan'
+      ? '⚡ Bebas memilih amal mana saja — submit tanpa harus mengisi semua.'
+      : '📋 Semua 4 amal wajib diisi terlebih dahulu sebelum mengirim.';
+  }
+
+  // Update label tombol submit
+  const submitLabel = document.querySelector('#btn-submit span:not(.submit-badge)');
+  if (submitLabel) {
+    submitLabel.textContent = mode === 'pilihan'
+      ? 'Kirim Amal Terpilih'
+      : 'Kirim ke Spreadsheet';
+  }
+
+  // Reset & rebuild
+  buildAmalCards();
+  updateProgress();
+  updateSubmitBtn();
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -398,21 +446,27 @@ function updateSubmitBtn() {
 
 async function submitData() {
   if (CONFIG.GAS_URL === 'PASTE_GAS_URL_DISINI') {
-    toast('⚠️ GAS URL belum diisi! Ikuti panduan setup di README.md', 'err', 6000);
+    toast('⚠️ GAS URL belum diisi!', 'err', 5000);
+    return;
+  }
+  if (location.protocol === 'file:') {
+    toast('⚠️ Buka via HTTPS agar bisa kirim data.', 'warn', 5000);
     return;
   }
 
-  // Blokir jika dibuka dari file:// — browser tidak izinkan request ke server eksternal
-  if (location.protocol === 'file:') {
-    toast(
-      '⚠️ Buka via HTTPS agar bisa kirim data. Gunakan versi GitHub Pages.',
-      'warn', 6000
-    );
-    hideLoading();
+  const filled = Object.keys(STATE.answers).length;
+  if (filled < 1) {
+    toast('⚠️ Belum ada amal yang diisi.', 'warn');
     return;
   }
 
   const tgl = formatTanggal(STATE.tanggal);
+
+  // Hanya kirim amal yang sudah diisi (Mode Pilihan mungkin tidak semua)
+  const answersToSend = {};
+  AMAL_LIST.forEach(a => {
+    if (STATE.answers[a.id]) answersToSend[a.id] = STATE.answers[a.id];
+  });
 
   const payload = {
     guru:           STATE.guru,
@@ -422,52 +476,49 @@ async function submitData() {
     tahun:          tgl.tahun,
     day:            tgl.day,
     spreadsheetIds: CONFIG.SPREADSHEET_IDS,
-    answers:        STATE.answers,
+    answers:        answersToSend,
   };
 
+  const jumlahAmal = Object.keys(answersToSend).length;
   showLoading(
-    'Mengirim ke 4 spreadsheet…',
+    `Mengirim ${jumlahAmal} amal ke spreadsheet…`,
     `${STATE.guru} — ${tgl.hari}, ${tgl.short}`
   );
 
   try {
     /**
-     * GAS menerima POST lalu redirect 302 ke URL final.
-     * - Jangan set Content-Type header kustom (biarkan browser handle)
-     * - redirect: 'follow' memastikan browser ikut redirect GAS
-     * - Harus dibuka dari HTTPS agar CORS diizinkan
+     * 🔑 FIX CORS: Gunakan GET request dengan payload di URL.
+     * POST ke GAS menyebabkan redirect 302 yang mengosongkan body.
+     * GET tidak mengalami masalah ini dan tetap CORS-safe.
      */
-    const res = await fetch(CONFIG.GAS_URL, {
-      method:   'POST',
-      body:     JSON.stringify(payload),
-      redirect: 'follow',
-    });
+    const url = CONFIG.GAS_URL
+      + '?action=submit'
+      + '&payload=' + encodeURIComponent(JSON.stringify(payload));
 
+    const res  = await fetch(url, { redirect: 'follow' });
     const text = await res.text();
+
     let json;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      throw new Error('Respons GAS bukan JSON: ' + text.substring(0, 100));
-    }
+    try { json = JSON.parse(text); }
+    catch { throw new Error('Respons GAS tidak valid: ' + text.substring(0, 120)); }
 
     hideLoading();
 
     if (json.status === 'ok') {
-      showPageSukses(json, tgl);
+      showPageSukses(json, tgl, jumlahAmal);
     } else {
-      toast(`❌ GAS error: ${json.message || 'Tidak diketahui.'}`, 'err', 6000);
+      toast(`❌ GAS: ${json.message || 'Terjadi kesalahan.'}`, 'err', 7000);
     }
 
   } catch (err) {
     hideLoading();
     console.error('[Submit error]', err);
-
-    const isNetErr = err instanceof TypeError;
-    const msg = isNetErr
-      ? '❌ Koneksi gagal. Pastikan internet aktif dan GAS URL benar.'
-      : `❌ Error: ${err.message}`;
-    toast(msg, 'err', 7000);
+    toast(
+      err instanceof TypeError
+        ? '❌ Koneksi gagal. Periksa internet dan GAS URL.'
+        : `❌ ${err.message}`,
+      'err', 7000
+    );
   }
 }
 
@@ -475,18 +526,25 @@ async function submitData() {
 // ✅  PAGE 3 — SUKSES
 // ──────────────────────────────────────────────────────────────
 
-function showPageSukses(gasResult, tgl) {
+function showPageSukses(gasResult, tgl, jumlahAmal) {
   document.getElementById('sukses-sub').textContent =
-    `Data amal yaumi ${tgl.hari}, ${tgl.short} berhasil dicatat ke spreadsheet.`;
+    `${jumlahAmal} amal yaumi ${tgl.hari}, ${tgl.short} berhasil dicatat.`;
 
-  const amalSummary = AMAL_LIST.map(a => {
-    const val = STATE.answers[a.id];
-    const icon = val === 'Y' ? '✅' : '❌';
-    return `${icon} ${a.nama}: <strong>${val === 'Y' ? 'Ya' : 'Tidak'}</strong>`;
-  }).join('<br>');
+  const amalSummary = AMAL_LIST
+    .filter(a => STATE.answers[a.id])  // hanya yang dikirim
+    .map(a => {
+      const val  = STATE.answers[a.id];
+      const icon = val === 'Y' ? '✅' : '❌';
+      return `${icon} ${a.nama}: <strong>${val === 'Y' ? 'Ya' : 'Tidak'}</strong>`;
+    }).join('<br>');
+
+  const skipped = AMAL_LIST.filter(a => !STATE.answers[a.id]);
+  const skipHtml = skipped.length
+    ? `<br><br><span style="color:var(--txt-3)">⏭️ Dilewati: ${skipped.map(a => a.nama).join(', ')}</span>`
+    : '';
 
   document.getElementById('sukses-detail').innerHTML =
-    `<strong style="color:var(--gold-2)">${STATE.guru}</strong><br>${amalSummary}` +
+    `<strong style="color:var(--gold-2)">${STATE.guru}</strong><br>${amalSummary}${skipHtml}` +
     (gasResult.message ? `<br><br><small style="color:var(--txt-3)">${gasResult.message}</small>` : '');
 
   goTo('page-sukses');
@@ -502,28 +560,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   const sel = document.getElementById('select-guru');
   sel.innerHTML = '<option value="">⏳ Memuat daftar nama…</option>';
   document.getElementById('btn-next-home').disabled = true;
-
   await fetchDaftarGuru();
-
-  /* Page 1 */
   initPageHome();
 
-  /* Back dari page 2 */
+  /* Tombol kembali dari page 2 */
   document.getElementById('btn-back-isi').addEventListener('click', () => {
     goTo('page-home');
     initPageHome();
   });
 
+  /* Mode toggle */
+  document.getElementById('mode-btn-lengkap').addEventListener('click', () => setMode('lengkap'));
+  document.getElementById('mode-btn-pilihan').addEventListener('click', () => setMode('pilihan'));
+
   /* Navigasi tanggal */
-  document.getElementById('btn-date-prev').addEventListener('click', () => {
-    setDate(addDays(STATE.tanggal, -1));
-  });
-  document.getElementById('btn-date-next').addEventListener('click', () => {
-    setDate(addDays(STATE.tanggal, 1));
-  });
+  document.getElementById('btn-date-prev').addEventListener('click', () => setDate(addDays(STATE.tanggal, -1)));
+  document.getElementById('btn-date-next').addEventListener('click', () => setDate(addDays(STATE.tanggal,  1)));
 
   /* Shortcut chips */
-  document.getElementById('chip-today').addEventListener('click', () => setDate(today()));
+  document.getElementById('chip-today').addEventListener('click',     () => setDate(today()));
   document.getElementById('chip-yesterday').addEventListener('click', () => setDate(yesterday()));
   document.getElementById('chip-pick').addEventListener('click', () => {
     document.getElementById('input-date').showPicker?.();
@@ -532,8 +587,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('input-date').addEventListener('change', e => {
     const parts = e.target.value.split('-');
     if (parts.length !== 3) return;
-    const d = new Date(+parts[0], +parts[1]-1, +parts[2]);
-    setDate(d);
+    setDate(new Date(+parts[0], +parts[1]-1, +parts[2]));
   });
 
   /* Submit */
@@ -541,8 +595,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   /* Halaman sukses */
   document.getElementById('btn-isi-lagi').addEventListener('click', () => {
-    STATE.answers  = {};
-    STATE.tanggal  = today();
+    STATE.answers = {};
+    STATE.tanggal = today();
     initPageIsi();
     goTo('page-isi');
   });
