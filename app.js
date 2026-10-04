@@ -139,11 +139,6 @@ const STATE = {
   guru:    '',
   tanggal: new Date(),
   answers: {},
-  /**
-   * 'lengkap'  — semua 4 amal wajib diisi sebelum bisa submit
-   * 'pilihan'  — bisa submit kapan saja, minimal 1 amal diisi
-   */
-  mode:    'lengkap',
 };
 
 // ──────────────────────────────────────────────────────────────
@@ -231,11 +226,155 @@ function goTo(pageId) {
 // 🏠  PAGE 1 — PILIH GURU
 // ──────────────────────────────────────────────────────────────
 
+function getInitials(name) {
+  if (!name) return '👤';
+  const clean = name.split(',')[0].trim();
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+  return (parts[0][0] + (parts[1] ? parts[1][0] : parts[0][1] || '')).toUpperCase();
+}
+
+function setupCustomSelect() {
+  const wrap = document.getElementById('custom-select-wrap');
+  if (!wrap) return;
+
+  const trigger = document.getElementById('custom-select-trigger');
+  const searchInput = document.getElementById('cs-search-input');
+  const searchClear = document.getElementById('cs-search-clear');
+  const optionsList = document.getElementById('cs-options-list');
+  const emptyMsg = document.getElementById('cs-empty-message');
+  const selectedText = document.getElementById('cs-selected-text');
+  const avatar = document.getElementById('cs-avatar');
+  const selNative = document.getElementById('select-guru');
+  const btnNext = document.getElementById('btn-next-home');
+
+  function renderOptions(filter = '') {
+    optionsList.innerHTML = '';
+    const q = filter.trim().toLowerCase();
+    let count = 0;
+
+    DAFTAR_GURU.forEach(nama => {
+      if (q && !nama.toLowerCase().includes(q)) return;
+      count++;
+
+      const isSelected = (STATE.guru === nama || selNative.value === nama);
+      const initials = getInitials(nama);
+
+      const item = document.createElement('div');
+      item.className = 'cs-option' + (isSelected ? ' selected' : '');
+      item.setAttribute('role', 'option');
+      item.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+      item.dataset.value = nama;
+
+      item.innerHTML = `
+        <span class="cs-opt-initials">${initials}</span>
+        <span class="cs-opt-name">${nama}</span>
+        <svg class="cs-opt-check" viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+          <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+        </svg>
+      `;
+
+      item.addEventListener('click', () => {
+        selectGuru(nama);
+        closeDropdown();
+      });
+
+      optionsList.appendChild(item);
+    });
+
+    emptyMsg.classList.toggle('visible', count === 0);
+  }
+
+  function selectGuru(nama) {
+    STATE.guru = nama;
+    selNative.value = nama;
+    btnNext.disabled = !nama;
+
+    if (nama) {
+      selectedText.textContent = nama;
+      selectedText.classList.remove('is-placeholder');
+      avatar.textContent = getInitials(nama);
+    } else {
+      selectedText.textContent = '— Pilih nama Anda —';
+      selectedText.classList.add('is-placeholder');
+      avatar.innerHTML = `
+        <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+          <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
+        </svg>`;
+    }
+
+    renderOptions(searchInput ? searchInput.value : '');
+  }
+
+  function openDropdown() {
+    wrap.classList.add('is-open');
+    trigger.setAttribute('aria-expanded', 'true');
+    if (searchInput) searchInput.focus();
+  }
+
+  function closeDropdown() {
+    wrap.classList.remove('is-open');
+    trigger.setAttribute('aria-expanded', 'false');
+    if (searchInput) {
+      searchInput.value = '';
+      if (searchClear) searchClear.classList.remove('visible');
+    }
+    renderOptions('');
+  }
+
+  function toggleDropdown() {
+    if (wrap.classList.contains('is-open')) closeDropdown();
+    else openDropdown();
+  }
+
+  // Event trigger
+  trigger.onclick = (e) => {
+    e.stopPropagation();
+    toggleDropdown();
+  };
+
+  // Search input filter
+  if (searchInput) {
+    searchInput.oninput = () => {
+      const val = searchInput.value;
+      if (searchClear) searchClear.classList.toggle('visible', val.length > 0);
+      renderOptions(val);
+    };
+  }
+
+  if (searchClear) {
+    searchClear.onclick = () => {
+      searchInput.value = '';
+      searchClear.classList.remove('visible');
+      renderOptions('');
+      searchInput.focus();
+    };
+  }
+
+  // Close on outside click
+  document.addEventListener('click', (e) => {
+    if (!wrap.contains(e.target)) {
+      closeDropdown();
+    }
+  });
+
+  // Close on Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && wrap.classList.contains('is-open')) {
+      closeDropdown();
+      trigger.focus();
+    }
+  });
+
+  // Initial population
+  selectGuru(STATE.guru || '');
+}
+
 function initPageHome() {
   const sel = document.getElementById('select-guru');
   const btn = document.getElementById('btn-next-home');
 
-  // Populate
+  // Populate native select
   sel.innerHTML = '<option value="">— Pilih nama Anda —</option>';
   DAFTAR_GURU.forEach(nama => {
     const opt = document.createElement('option');
@@ -250,11 +389,14 @@ function initPageHome() {
   sel.onchange = () => { btn.disabled = !sel.value; };
 
   btn.onclick = () => {
-    if (!sel.value) return;
-    STATE.guru = sel.value;
+    if (!sel.value && !STATE.guru) return;
+    STATE.guru = STATE.guru || sel.value;
     initPageIsi();
     goTo('page-isi');
   };
+
+  // Setup custom dropdown
+  setupCustomSelect();
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -318,59 +460,62 @@ function setDate(d) {
   renderDateDisplay();
 }
 
-/* ─── Amal Cards ─── */
+/* ─── Amal Cards (2x2 Grid — Sekali Screenshot Muat Semua) ─── */
 function buildAmalCards() {
   const container = document.getElementById('amal-cards');
   container.innerHTML = '';
 
   AMAL_LIST.forEach(amal => {
+    const isAnswered = STATE.answers[amal.id];
     const card = document.createElement('div');
-    card.className = 'amal-card';
+    card.className = 'amal-card' + (isAnswered ? ` answered-${isAnswered}` : '');
     card.id = `amal-card-${amal.id}`;
     card.innerHTML = `
-      <div class="amal-icon-wrap" id="amal-icon-${amal.id}">${amal.icon}</div>
-      <div class="amal-info">
-        <span class="amal-name">${amal.nama}</span>
-        <span class="amal-q">${amal.tanya}</span>
+      <div class="amal-header">
+        <div class="amal-icon-wrap" id="amal-icon-${amal.id}">${amal.icon}</div>
+        <div class="amal-info">
+          <span class="amal-name">${amal.nama}</span>
+        </div>
       </div>
       <div class="amal-btns">
-        <button class="amal-ans ya"    data-id="${amal.id}" data-val="Y">Y</button>
-        <button class="amal-ans tidak" data-id="${amal.id}" data-val="T">T</button>
+        <button type="button" class="amal-ans ya${isAnswered === 'Y' ? ' active' : ''}" data-id="${amal.id}" data-val="Y" aria-label="Ya, ${amal.nama}">
+          <svg viewBox="0 0 20 20" fill="currentColor" width="13" height="13">
+            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+          </svg>
+          Ya
+        </button>
+        <button type="button" class="amal-ans tidak${isAnswered === 'T' ? ' active' : ''}" data-id="${amal.id}" data-val="T" aria-label="Tidak, ${amal.nama}">
+          <svg viewBox="0 0 20 20" fill="currentColor" width="13" height="13">
+            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+          </svg>
+          Tidak
+        </button>
       </div>
     `;
     container.appendChild(card);
   });
 
   // Event delegation
-  container.addEventListener('click', e => {
+  container.onclick = e => {
     const btn = e.target.closest('.amal-ans');
     if (!btn) return;
     handleAns(btn.dataset.id, btn.dataset.val);
-  });
+  };
 }
 
 function handleAns(amalId, val) {
   STATE.answers[amalId] = val;
 
   const card = document.getElementById(`amal-card-${amalId}`);
-  card.className = `amal-card answered-${val}`;
-
-  // Update button active states
-  card.querySelectorAll('.amal-ans').forEach(b => {
-    b.classList.toggle('active', b.dataset.val === val);
-  });
+  if (card) {
+    card.className = `amal-card answered-${val}`;
+    card.querySelectorAll('.amal-ans').forEach(b => {
+      b.classList.toggle('active', b.dataset.val === val);
+    });
+  }
 
   updateProgress();
   updateSubmitBtn();
-
-  // Scroll ke amal berikutnya yang belum diisi
-  const unanswered = AMAL_LIST.find(a => !STATE.answers[a.id]);
-  if (unanswered) {
-    setTimeout(() => {
-      document.getElementById(`amal-card-${unanswered.id}`)
-        ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }, 120);
-  }
 }
 
 function updateProgress() {
@@ -379,12 +524,8 @@ function updateProgress() {
   const pct    = total > 0 ? (filled / total * 100) : 0;
 
   document.getElementById('prog-fill').style.width = pct + '%';
-  document.getElementById('label-amal-count').textContent =
-    STATE.mode === 'pilihan'
-      ? `${filled} dipilih (mode pilihan)`
-      : `${filled} / ${total} diisi`;
-  document.getElementById('submit-badge').textContent =
-    STATE.mode === 'pilihan' ? filled : `${filled}/${total}`;
+  document.getElementById('label-amal-count').textContent = `${filled} / ${total} dipilih`;
+  document.getElementById('submit-badge').textContent = `${filled}/${total}`;
 }
 
 function updateSubmitBtn() {
@@ -392,48 +533,10 @@ function updateSubmitBtn() {
   const btn     = document.getElementById('btn-submit');
   const note    = document.getElementById('submit-note');
 
-  if (STATE.mode === 'pilihan') {
-    // Mode Pilihan: bisa submit kapan saja asal minimal 1 diisi
-    btn.disabled = filled < 1;
-    note.style.opacity = filled >= 1 ? '0' : '1';
-    note.textContent = 'Pilih minimal 1 amal untuk dikirim.';
-  } else {
-    // Mode Lengkap: wajib isi semua
-    btn.disabled = filled < AMAL_LIST.length;
-    note.style.opacity = filled >= AMAL_LIST.length ? '0' : '1';
-    note.textContent = `Isi semua ${AMAL_LIST.length} amal terlebih dahulu.`;
-  }
-}
-
-/* ─── Mode Toggle ─── */
-function setMode(mode) {
-  STATE.mode    = mode;
-  STATE.answers = {};
-
-  // Update tombol mode
-  document.getElementById('mode-btn-lengkap').classList.toggle('active', mode === 'lengkap');
-  document.getElementById('mode-btn-pilihan').classList.toggle('active', mode === 'pilihan');
-
-  // Update deskripsi mode
-  const descEl = document.getElementById('mode-desc');
-  if (descEl) {
-    descEl.textContent = mode === 'pilihan'
-      ? '⚡ Bebas memilih amal mana saja — submit tanpa harus mengisi semua.'
-      : '📋 Semua 4 amal wajib diisi terlebih dahulu sebelum mengirim.';
-  }
-
-  // Update label tombol submit
-  const submitLabel = document.querySelector('#btn-submit span:not(.submit-badge)');
-  if (submitLabel) {
-    submitLabel.textContent = mode === 'pilihan'
-      ? 'Kirim Amal Terpilih'
-      : 'Kirim ke Spreadsheet';
-  }
-
-  // Reset & rebuild
-  buildAmalCards();
-  updateProgress();
-  updateSubmitBtn();
+  // Bebas pilih berapa saja, minimal 1 amal untuk submit
+  btn.disabled = filled < 1;
+  note.style.opacity = filled >= 1 ? '0' : '1';
+  note.textContent = 'Pilih minimal 1 amal untuk dikirim.';
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -589,10 +692,40 @@ function showPageSukses(gasResult, tgl, jumlahAmal) {
 }
 
 // ──────────────────────────────────────────────────────────────
+// 🌗  TEMA (SIANG & MALAM)
+// ──────────────────────────────────────────────────────────────
+
+function initTheme() {
+  const saved = localStorage.getItem('amal_theme') || 'dark';
+  applyTheme(saved);
+
+  const btn = document.getElementById('theme-toggle-btn');
+  if (btn) {
+    btn.onclick = () => {
+      const cur = document.documentElement.getAttribute('data-theme') || 'dark';
+      const next = cur === 'dark' ? 'light' : 'dark';
+      applyTheme(next);
+    };
+  }
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('amal_theme', theme);
+  const icon = document.getElementById('theme-icon');
+  if (icon) icon.textContent = theme === 'dark' ? '🌙' : '☀️';
+  const btn = document.getElementById('theme-toggle-btn');
+  if (btn) btn.title = theme === 'dark' ? 'Ganti ke Tema Siang' : 'Ganti ke Tema Malam';
+}
+
+// ──────────────────────────────────────────────────────────────
 // 🔌  EVENT WIRING
 // ──────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {
+
+  /* Inisialisasi Tema (Siang / Malam) */
+  initTheme();
 
   /* Tampilkan loading sementara fetch nama */
   const sel = document.getElementById('select-guru');
@@ -606,10 +739,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     goTo('page-home');
     initPageHome();
   });
-
-  /* Mode toggle */
-  document.getElementById('mode-btn-lengkap').addEventListener('click', () => setMode('lengkap'));
-  document.getElementById('mode-btn-pilihan').addEventListener('click', () => setMode('pilihan'));
 
   /* Navigasi tanggal */
   document.getElementById('btn-date-prev').addEventListener('click', () => setDate(addDays(STATE.tanggal, -1)));
