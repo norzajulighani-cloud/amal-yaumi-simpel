@@ -231,11 +231,155 @@ function goTo(pageId) {
 // 🏠  PAGE 1 — PILIH GURU
 // ──────────────────────────────────────────────────────────────
 
+function getInitials(name) {
+  if (!name) return '👤';
+  const clean = name.split(',')[0].trim();
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+  return (parts[0][0] + (parts[1] ? parts[1][0] : parts[0][1] || '')).toUpperCase();
+}
+
+function setupCustomSelect() {
+  const wrap = document.getElementById('custom-select-wrap');
+  if (!wrap) return;
+
+  const trigger = document.getElementById('custom-select-trigger');
+  const searchInput = document.getElementById('cs-search-input');
+  const searchClear = document.getElementById('cs-search-clear');
+  const optionsList = document.getElementById('cs-options-list');
+  const emptyMsg = document.getElementById('cs-empty-message');
+  const selectedText = document.getElementById('cs-selected-text');
+  const avatar = document.getElementById('cs-avatar');
+  const selNative = document.getElementById('select-guru');
+  const btnNext = document.getElementById('btn-next-home');
+
+  function renderOptions(filter = '') {
+    optionsList.innerHTML = '';
+    const q = filter.trim().toLowerCase();
+    let count = 0;
+
+    DAFTAR_GURU.forEach(nama => {
+      if (q && !nama.toLowerCase().includes(q)) return;
+      count++;
+
+      const isSelected = (STATE.guru === nama || selNative.value === nama);
+      const initials = getInitials(nama);
+
+      const item = document.createElement('div');
+      item.className = 'cs-option' + (isSelected ? ' selected' : '');
+      item.setAttribute('role', 'option');
+      item.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+      item.dataset.value = nama;
+
+      item.innerHTML = `
+        <span class="cs-opt-initials">${initials}</span>
+        <span class="cs-opt-name">${nama}</span>
+        <svg class="cs-opt-check" viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+          <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+        </svg>
+      `;
+
+      item.addEventListener('click', () => {
+        selectGuru(nama);
+        closeDropdown();
+      });
+
+      optionsList.appendChild(item);
+    });
+
+    emptyMsg.classList.toggle('visible', count === 0);
+  }
+
+  function selectGuru(nama) {
+    STATE.guru = nama;
+    selNative.value = nama;
+    btnNext.disabled = !nama;
+
+    if (nama) {
+      selectedText.textContent = nama;
+      selectedText.classList.remove('is-placeholder');
+      avatar.textContent = getInitials(nama);
+    } else {
+      selectedText.textContent = '— Pilih nama Anda —';
+      selectedText.classList.add('is-placeholder');
+      avatar.innerHTML = `
+        <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+          <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
+        </svg>`;
+    }
+
+    renderOptions(searchInput ? searchInput.value : '');
+  }
+
+  function openDropdown() {
+    wrap.classList.add('is-open');
+    trigger.setAttribute('aria-expanded', 'true');
+    if (searchInput) searchInput.focus();
+  }
+
+  function closeDropdown() {
+    wrap.classList.remove('is-open');
+    trigger.setAttribute('aria-expanded', 'false');
+    if (searchInput) {
+      searchInput.value = '';
+      if (searchClear) searchClear.classList.remove('visible');
+    }
+    renderOptions('');
+  }
+
+  function toggleDropdown() {
+    if (wrap.classList.contains('is-open')) closeDropdown();
+    else openDropdown();
+  }
+
+  // Event trigger
+  trigger.onclick = (e) => {
+    e.stopPropagation();
+    toggleDropdown();
+  };
+
+  // Search input filter
+  if (searchInput) {
+    searchInput.oninput = () => {
+      const val = searchInput.value;
+      if (searchClear) searchClear.classList.toggle('visible', val.length > 0);
+      renderOptions(val);
+    };
+  }
+
+  if (searchClear) {
+    searchClear.onclick = () => {
+      searchInput.value = '';
+      searchClear.classList.remove('visible');
+      renderOptions('');
+      searchInput.focus();
+    };
+  }
+
+  // Close on outside click
+  document.addEventListener('click', (e) => {
+    if (!wrap.contains(e.target)) {
+      closeDropdown();
+    }
+  });
+
+  // Close on Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && wrap.classList.contains('is-open')) {
+      closeDropdown();
+      trigger.focus();
+    }
+  });
+
+  // Initial population
+  selectGuru(STATE.guru || '');
+}
+
 function initPageHome() {
   const sel = document.getElementById('select-guru');
   const btn = document.getElementById('btn-next-home');
 
-  // Populate
+  // Populate native select
   sel.innerHTML = '<option value="">— Pilih nama Anda —</option>';
   DAFTAR_GURU.forEach(nama => {
     const opt = document.createElement('option');
@@ -250,11 +394,14 @@ function initPageHome() {
   sel.onchange = () => { btn.disabled = !sel.value; };
 
   btn.onclick = () => {
-    if (!sel.value) return;
-    STATE.guru = sel.value;
+    if (!sel.value && !STATE.guru) return;
+    STATE.guru = STATE.guru || sel.value;
     initPageIsi();
     goTo('page-isi');
   };
+
+  // Setup custom dropdown
+  setupCustomSelect();
 }
 
 // ──────────────────────────────────────────────────────────────

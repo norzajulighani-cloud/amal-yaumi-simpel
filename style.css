@@ -144,12 +144,23 @@ body {
 /* ── CARD ── */
 .card {
   width: 100%;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+  background: linear-gradient(170deg, #0e1e13 0%, #09150d 100%);
+  border: 1px solid rgba(200, 150, 12, 0.22);
   border-radius: var(--r-xl);
-  padding: 28px 26px;
-  box-shadow: var(--shadow-card);
-  display: flex; flex-direction: column; gap: 18px;
+  padding: 30px 26px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(247, 224, 122, 0.15);
+  display: flex; flex-direction: column; gap: 20px;
+  position: relative;
+  overflow: visible;
+}
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 15%; right: 15%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--gold-1), transparent);
+  border-radius: 2px;
+  opacity: 0.6;
 }
 .slide-up { animation: slideUp .5s var(--ease) both; }
 @keyframes slideUp {
@@ -170,27 +181,309 @@ body {
   font-size: .72rem; font-weight: 600;
   color: var(--gold-2); text-transform: uppercase; letter-spacing: 1px;
 }
-.select-wrap { position: relative; }
-select {
-  width: 100%; appearance: none;
-  background: var(--bg-input);
+/* ── ACCESSIBILITY ── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* ── CUSTOM ELEGANT SELECT ── */
+.custom-select-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.custom-select-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(145deg, rgba(16, 32, 22, 0.95), rgba(10, 22, 14, 0.98));
   border: 1px solid var(--border);
   border-radius: var(--r-md);
+  padding: 12px 16px;
   color: var(--txt);
-  font-family: 'Inter', sans-serif; font-size: .93rem;
-  padding: 13px 42px 13px 16px;
-  cursor: pointer; outline: none;
+  font-family: 'Inter', sans-serif;
+  font-size: .95rem;
+  cursor: pointer;
+  outline: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition: all var(--t);
+  text-align: left;
+}
+
+.custom-select-trigger:hover {
+  border-color: var(--border-h);
+  background: linear-gradient(145deg, rgba(22, 44, 29, 0.95), rgba(12, 26, 17, 0.98));
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35), 0 0 0 2px var(--gold-glow);
+  transform: translateY(-1px);
+}
+
+.custom-select-wrap.is-open .custom-select-trigger,
+.custom-select-trigger:focus-visible {
+  border-color: var(--gold-2);
+  box-shadow: 0 0 0 3px var(--gold-glow), 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.cs-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(247, 224, 122, 0.18), rgba(200, 150, 12, 0.08));
+  border: 1px solid rgba(212, 168, 67, 0.35);
+  color: var(--gold-1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: .84rem;
+  letter-spacing: .5px;
+  flex-shrink: 0;
+  transition: all var(--t);
+}
+
+.custom-select-trigger:hover .cs-avatar,
+.custom-select-wrap.is-open .cs-avatar {
+  border-color: var(--gold-1);
+  box-shadow: 0 0 14px rgba(247, 224, 122, 0.35);
+  transform: scale(1.05);
+}
+
+.cs-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cs-selected-text {
+  font-size: .93rem;
+  font-weight: 500;
+  color: var(--txt);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.1px;
+}
+
+.cs-selected-text.is-placeholder {
+  color: var(--txt-2);
+  font-weight: 400;
+}
+
+.cs-caret {
+  color: var(--gold-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), color var(--t);
+}
+
+.custom-select-wrap.is-open .cs-caret {
+  transform: rotate(180deg);
+  color: var(--gold-1);
+}
+
+/* ── DROPDOWN MENU ── */
+.custom-select-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: rgba(10, 22, 14, 0.97);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(212, 168, 67, 0.38);
+  border-radius: var(--r-md);
+  box-shadow: 0 20px 48px -6px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(200, 150, 12, 0.15), 0 0 24px rgba(200, 150, 12, 0.08);
+  padding: 10px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px) scale(0.98);
+  transform-origin: top center;
+  transition: opacity 0.22s var(--ease), transform 0.22s var(--ease), visibility 0.22s;
+  pointer-events: none;
+}
+
+.custom-select-wrap.is-open .custom-select-dropdown {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+  pointer-events: all;
+}
+
+/* ── SEARCH BOX ── */
+.cs-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(180, 145, 40, 0.25);
+  border-radius: var(--r-sm);
+  padding: 0 12px;
+  margin-bottom: 8px;
   transition: border-color var(--t), box-shadow var(--t);
 }
-select:focus, select:hover {
-  border-color: var(--border-h);
-  box-shadow: 0 0 0 3px var(--gold-glow);
+
+.cs-search-wrap:focus-within {
+  border-color: var(--gold-2);
+  box-shadow: 0 0 0 2px var(--gold-glow);
 }
-select option { background: #0c1a10; }
-.sel-caret {
-  position: absolute; right: 14px; top: 50%;
-  transform: translateY(-50%);
-  color: var(--gold-2); pointer-events: none;
+
+.cs-search-icon {
+  color: var(--gold-2);
+  flex-shrink: 0;
+  margin-right: 8px;
+}
+
+.cs-search-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--txt);
+  font-family: 'Inter', sans-serif;
+  font-size: .88rem;
+  padding: 10px 0;
+}
+
+.cs-search-input::placeholder {
+  color: var(--txt-3);
+  font-size: .84rem;
+}
+
+.cs-search-clear {
+  background: none;
+  border: none;
+  color: var(--txt-2);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px;
+  display: none;
+  transition: color var(--t);
+}
+.cs-search-clear:hover { color: var(--gold-1); }
+.cs-search-clear.visible { display: block; }
+
+/* ── OPTIONS LIST ── */
+.cs-options-list {
+  max-height: 250px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 4px;
+}
+
+/* Custom Scrollbar */
+.cs-options-list::-webkit-scrollbar {
+  width: 5px;
+}
+.cs-options-list::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 10px;
+}
+.cs-options-list::-webkit-scrollbar-thumb {
+  background: rgba(200, 150, 12, 0.4);
+  border-radius: 10px;
+}
+.cs-options-list::-webkit-scrollbar-thumb:hover {
+  background: var(--gold-2);
+}
+
+/* ── OPTION ITEM ── */
+.cs-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: all 0.18s var(--ease);
+  position: relative;
+  user-select: none;
+}
+
+.cs-option:hover {
+  background: rgba(74, 222, 128, 0.09);
+  transform: translateX(4px);
+}
+
+.cs-option.selected {
+  background: linear-gradient(90deg, rgba(200, 150, 12, 0.18) 0%, rgba(200, 150, 12, 0.05) 100%);
+  border-left: 3px solid var(--gold-1);
+}
+
+.cs-opt-initials {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--txt-2);
+  font-size: .75rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all var(--t);
+}
+
+.cs-option:hover .cs-opt-initials,
+.cs-option.selected .cs-opt-initials {
+  background: linear-gradient(135deg, rgba(247, 224, 122, 0.25), rgba(200, 150, 12, 0.15));
+  border-color: var(--gold-2);
+  color: var(--gold-1);
+}
+
+.cs-opt-name {
+  flex: 1;
+  font-size: .88rem;
+  font-weight: 500;
+  color: var(--txt);
+  line-height: 1.4;
+  transition: color var(--t);
+}
+
+.cs-option:hover .cs-opt-name {
+  color: #fff;
+}
+
+.cs-option.selected .cs-opt-name {
+  color: var(--gold-1);
+  font-weight: 600;
+}
+
+.cs-opt-check {
+  color: var(--green);
+  display: none;
+  flex-shrink: 0;
+}
+
+.cs-option.selected .cs-opt-check {
+  display: block;
+}
+
+.cs-empty-message {
+  display: none;
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--txt-2);
+  font-size: .84rem;
+}
+.cs-empty-message.visible {
+  display: block;
 }
 
 /* ── BUTTONS ── */
