@@ -460,7 +460,7 @@ function setDate(d) {
   renderDateDisplay();
 }
 
-/* ─── Amal Cards (2x2 Grid — Sekali Screenshot Muat Semua) ─── */
+/* ─── Amal Cards (1-Kolom Rapi & Nyaman) ─── */
 function buildAmalCards() {
   const container = document.getElementById('amal-cards');
   container.innerHTML = '';
@@ -471,7 +471,7 @@ function buildAmalCards() {
     card.className = 'amal-card' + (isAnswered ? ` answered-${isAnswered}` : '');
     card.id = `amal-card-${amal.id}`;
     card.innerHTML = `
-      <div class="amal-header">
+      <div class="amal-main">
         <div class="amal-icon-wrap" id="amal-icon-${amal.id}">${amal.icon}</div>
         <div class="amal-info">
           <span class="amal-name">${amal.nama}</span>
@@ -699,23 +699,27 @@ function initTheme() {
   const saved = localStorage.getItem('amal_theme') || 'dark';
   applyTheme(saved);
 
-  const btn = document.getElementById('theme-toggle-btn');
-  if (btn) {
+  document.querySelectorAll('.theme-toggle-btn').forEach(btn => {
     btn.onclick = () => {
       const cur = document.documentElement.getAttribute('data-theme') || 'dark';
       const next = cur === 'dark' ? 'light' : 'dark';
       applyTheme(next);
     };
-  }
+  });
 }
 
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   localStorage.setItem('amal_theme', theme);
-  const icon = document.getElementById('theme-icon');
-  if (icon) icon.textContent = theme === 'dark' ? '🌙' : '☀️';
-  const btn = document.getElementById('theme-toggle-btn');
-  if (btn) btn.title = theme === 'dark' ? 'Ganti ke Tema Siang' : 'Ganti ke Tema Malam';
+  const iconText = theme === 'dark' ? '🌙' : '☀️';
+  document.querySelectorAll('.theme-icon').forEach(icon => {
+    icon.textContent = iconText;
+  });
+  const titleText = theme === 'dark' ? 'Ganti ke Tema Siang' : 'Ganti ke Tema Malam';
+  document.querySelectorAll('.theme-toggle-btn').forEach(btn => {
+    btn.title = titleText;
+    btn.setAttribute('aria-label', titleText);
+  });
 }
 
 // ──────────────────────────────────────────────────────────────
