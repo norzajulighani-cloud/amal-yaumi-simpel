@@ -507,9 +507,13 @@ async function submitData() {
   const tgl = formatTanggal(STATE.tanggal);
 
   // Hanya kirim amal yang sudah diisi (Mode Pilihan mungkin tidak semua)
+  // Format nilai sesuai aturan Data Validation (dropdown) spreadsheet sekolah
   const answersToSend = {};
   AMAL_LIST.forEach(a => {
-    if (STATE.answers[a.id]) answersToSend[a.id] = STATE.answers[a.id];
+    if (STATE.answers[a.id]) {
+      const v = STATE.answers[a.id];
+      answersToSend[a.id] = (v === 'Y') ? 'Y (Mengerjakan)' : 'T (Tidak Mengerjakan)';
+    }
   });
 
   const payload = {
